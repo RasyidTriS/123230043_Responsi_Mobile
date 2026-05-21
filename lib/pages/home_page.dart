@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:latihan_responsi/models/tv_show.dart';
-import 'package:latihan_responsi/services/tvmaze_service.dart';
-import 'package:latihan_responsi/widgets/custom_widgets.dart';
+import 'package:latihan_responsi/models/product.dart';
+import 'package:latihan_responsi/pages/detail_page.dart';
+import 'package:latihan_responsi/services/api_service.dart';
+import 'package:latihan_responsi/widgets/product_card.dart';
 
-/// Halaman Home dengan daftar TV shows
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -12,101 +12,92 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late Future<List<TVShow>> _showsFuture;
-  final TVMazeService _service = TVMazeService();
+  final _apiService = ApiService();
+  late Future<List<Product>> _productsFuture;
 
   @override
   void initState() {
     super.initState();
-    _showsFuture = _service.getShows();
+    _productsFuture = _apiService.fetchProducts();
   }
 
-  /// Refresh data
-  Future<void> _refreshShows() async {
+  Future<void> _refreshProducts() async {
     setState(() {
-      _showsFuture = _service.getShows();
+      _productsFuture = _apiService.fetchProducts();
     });
-    await _showsFuture;
+    await _productsFuture;
+  }
+
+  int _crossAxisCount(double width) {
+    if (width >= 1000) return 4;
+    if (width >= 650) return 3;
+    return 2;
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: appBackground,
-      body: SafeArea(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Padding(
-              padding: EdgeInsets.fromLTRB(16, 18, 16, 14),
-              child: Text(
-                'Skuy Nonton!',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
+    return RefreshIndicator(
+      onRefresh: _refreshProducts,
+      color: const Color(0xFF379A43),
+      child: FutureBuilder<List<Product>>(
+        future: _productsFuture,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+
+          if (snapshot.hasError) {
+            return ListView(
+              children: [
+                const SizedBox(height: 160),
+                Icon(
+                  Icons.cloud_off_outlined,
+                  size: 58,
+                  color: Colors.red.shade300,
                 ),
-              ),
-            ),
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: _refreshShows,
-                color: appRed,
-                backgroundColor: appCard,
-                child: FutureBuilder<List<TVShow>>(
-                  future: _showsFuture,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const LoadingIndicator();
-                    }
-
-                    if (snapshot.hasError) {
-                      return ErrorMessageWidget(
-                        message: 'Gagal memuat data\n${snapshot.error}',
-                        onRetry: _refreshShows,
-                      );
-                    }
-
-                    if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                      return const EmptyStateWidget(
-                        title: 'Tidak ada data',
-                        subtitle: 'Tidak ada TV show tersedia saat ini',
-                        icon: Icons.tv_off,
-                      );
-                    }
-
-                    final shows = snapshot.data!;
-
-                    return GridView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 2,
-                            childAspectRatio: 0.62,
-                            crossAxisSpacing: 14,
-                            mainAxisSpacing: 16,
-                          ),
-                      itemCount: shows.length,
-                      itemBuilder: (context, index) {
-                        final show = shows[index];
-                        return TVShowCard(
-                          imageUrl: show.image,
-                          title: show.name,
-                          rating: show.rating,
-                          onTap: () {
-                            Navigator.of(
-                              context,
-                            ).pushNamed('/detail', arguments: show.id);
-                          },
-                        );
-                      },
-                    );
-                  },
+                const SizedBox(height: 14),
+                Text(
+                  'Gagal memuat produk\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-              ),
-            ),
-          ],
-        ),
+              ],
+            );
+          }
+
+          final products = snapshot.data ?? [];
+          if (products.isEmpty) {
+            return const Center(child: Text('Belum ada produk.'));
+          }
+
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              return GridView.builder(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: _crossAxisCount(constraints.maxWidth),
+                  childAspectRatio: 0.66,
+                  crossAxisSpacing: 14,
+                  mainAxisSpacing: 14,
+                ),
+                itemCount: products.length,
+                itemBuilder: (context, index) {
+                  final product = products[index];
+                  return ProductCard(
+                    product: product,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => DetailPage(productId: product.id),
+                        ),
+                      );
+                    },
+                  );
+                },
+              );
+            },
+          );
+        },
       ),
     );
   }

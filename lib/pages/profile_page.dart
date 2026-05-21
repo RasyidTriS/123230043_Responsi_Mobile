@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:latihan_responsi/services/auth_service.dart';
-import 'package:latihan_responsi/widgets/custom_widgets.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:latihan_responsi/pages/login_page.dart';
+import 'package:latihan_responsi/services/cart_service.dart';
+import 'package:latihan_responsi/services/session_service.dart';
 
-/// Halaman Profile
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
 
@@ -11,137 +12,92 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  String? _username;
-  bool _isLoading = true;
+  late Future<String> _emailFuture;
 
   @override
   void initState() {
     super.initState();
-    _loadUsername();
+    _emailFuture = SessionService.getEmail();
   }
 
-  /// Load username dari SharedPreferences
-  void _loadUsername() async {
-    final username = await AuthService.getUsername();
+  Future<void> _logout() async {
+    await SessionService.logout();
+
     if (!mounted) return;
-
-    setState(() {
-      _username = username;
-      _isLoading = false;
-    });
-  }
-
-  /// Handle logout
-  void _handleLogout() async {
-    await AuthService.logout();
-    if (!mounted) return;
-
-    Navigator.of(context).pushReplacementNamed('/login');
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+      (_) => false,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: appBackground,
-      body: SafeArea(
-        child: _isLoading
-            ? const LoadingIndicator()
-            : Column(
+    return FutureBuilder<String>(
+      future: _emailFuture,
+      builder: (context, snapshot) {
+        final email = snapshot.data ?? '-';
+
+        return Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(16),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(16, 18, 16, 14),
-                    child: Center(
-                      child: Text(
-                        'Profil',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
+                  const Text(
+                    'Email',
+                    style: TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  Expanded(
-                    child: Center(
-                      child: SingleChildScrollView(
-                        padding: const EdgeInsets.fromLTRB(26, 12, 26, 28),
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 420),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                width: 118,
-                                height: 118,
-                                decoration: const BoxDecoration(
-                                  color: appCard,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.person,
-                                  color: appSecondaryText,
-                                  size: 72,
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              Text(
-                                _username ?? 'User',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              const SizedBox(height: 28),
-                              const Text(
-                                'Kesan: Praktikum mobile fix GOAT',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.5,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              const Text(
-                                'Pesan: Kirim salam sama yang namanya...',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w600,
-                                  height: 1.5,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              const Text(
-                                '(sebagian teks hilang)',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  color: appSecondaryText,
-                                  fontSize: 13,
-                                  height: 1.4,
-                                ),
-                              ),
-                              const SizedBox(height: 34),
-                              SizedBox(
-                                width: double.infinity,
-                                child: NontonButton(
-                                  label: 'Logout',
-                                  onPressed: _handleLogout,
-                                ),
-                              ),
-                            ],
-                          ),
+                  const SizedBox(height: 8),
+                  Text(email, style: const TextStyle(fontSize: 16)),
+                  const SizedBox(height: 20),
+                  ValueListenableBuilder<Box<Map<dynamic, dynamic>>>(
+                    valueListenable: CartService.box.listenable(),
+                    builder: (context, box, _) {
+                      return Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
                         ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.shopping_cart_outlined,
+                              color: Color(0xFF379A43),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '${box.length} produk di keranjang',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      onPressed: _logout,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color.fromARGB(255, 255, 17, 0),
                       ),
+                      child: const Text('Logout'),
                     ),
                   ),
                 ],
               ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

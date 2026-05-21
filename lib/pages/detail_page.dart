@@ -1,250 +1,247 @@
 import 'package:flutter/material.dart';
-import 'package:latihan_responsi/models/tv_show.dart';
-import 'package:latihan_responsi/services/favorite_service.dart';
-import 'package:latihan_responsi/services/tvmaze_service.dart';
-import 'package:latihan_responsi/widgets/custom_widgets.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:latihan_responsi/models/product.dart';
+import 'package:latihan_responsi/pages/cart_page.dart';
+import 'package:latihan_responsi/services/api_service.dart';
+import 'package:latihan_responsi/services/cart_service.dart';
 
-/// Halaman Detail TV Show
 class DetailPage extends StatefulWidget {
-  final int showId;
+  final int productId;
 
-  const DetailPage({super.key, required this.showId});
+  const DetailPage({super.key, required this.productId});
 
   @override
   State<DetailPage> createState() => _DetailPageState();
 }
 
 class _DetailPageState extends State<DetailPage> {
-  late Future<TVShow> _showFuture;
-  late bool _isFavorite;
-  final TVMazeService _service = TVMazeService();
+  final _apiService = ApiService();
+  late Future<Product> _productFuture;
 
   @override
   void initState() {
     super.initState();
-    _showFuture = _service.getShowDetail(widget.showId);
-    _isFavorite = FavoriteService.isFavorite(widget.showId);
+    _productFuture = _apiService.fetchProductDetail(widget.productId);
   }
 
-  /// Clean HTML tags dari summary
-  String _cleanHtmlTags(String? html) {
-    if (html == null) return 'No overview available';
-
-    final regex = RegExp(r'<[^>]*>');
-    String cleanString = html.replaceAll(regex, '');
-
-    cleanString = cleanString.replaceAll('&amp;', '&');
-    cleanString = cleanString.replaceAll('&quot;', '"');
-    cleanString = cleanString.replaceAll('&#039;', "'");
-    cleanString = cleanString.replaceAll('&lt;', '<');
-    cleanString = cleanString.replaceAll('&gt;', '>');
-
-    return cleanString.trim().isEmpty
-        ? 'No overview available'
-        : cleanString.trim();
+  String _formatPrice(double value) {
+    return '\$${value.toStringAsFixed(2)}';
   }
 
-  /// Handle favorite toggle
-  void _toggleFavorite(TVShow show) async {
-    final wasFavorite = FavoriteService.isFavorite(show.id);
-    setState(() {
-      _isFavorite = !wasFavorite;
-    });
+  Future<void> _addToCart(Product product) async {
+    if (CartService.contains(product.id)) return;
+    await CartService.add(product);
 
-    try {
-      if (wasFavorite) {
-        await FavoriteService.removeFavorite(show.id);
-      } else {
-        await FavoriteService.addFavorite(show);
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              _isFavorite
-                  ? '${show.name} ditambahkan ke favorit'
-                  : '${show.name} dihapus dari favorit',
-            ),
-            backgroundColor: _isFavorite ? Colors.green : appRed,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _isFavorite = wasFavorite;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: appRed),
-        );
-      }
-    }
-  }
-
-  void _showWatchSnackBar(TVShow show) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Memutar ${show.name}'),
-        backgroundColor: appRed,
-        duration: const Duration(seconds: 1),
-      ),
-    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Produk masuk ke keranjang')));
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: appBackground,
-      appBar: const CustomAppBar(title: 'Detail', showBackButton: true),
-      body: FutureBuilder<TVShow>(
-        future: _showFuture,
+      appBar: AppBar(
+        leading: IconButton(
+          tooltip: 'Kembali',
+          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_rounded),
+        ),
+        title: const Text('Detail Produk'),
+        actions: [
+          IconButton(
+            tooltip: 'Keranjang',
+            onPressed: () {
+              Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const CartPage()));
+            },
+            icon: const Icon(Icons.shopping_cart_outlined),
+          ),
+        ],
+      ),
+      body: FutureBuilder<Product>(
+        future: _productFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return const LoadingIndicator();
+            return const Center(child: CircularProgressIndicator());
           }
 
           if (snapshot.hasError) {
-            return ErrorMessageWidget(
-              message: 'Gagal memuat detail\n${snapshot.error}',
-              onRetry: () {
-                setState(() {
-                  _showFuture = _service.getShowDetail(widget.showId);
-                  _isFavorite = FavoriteService.isFavorite(widget.showId);
-                });
-              },
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Gagal memuat detail\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
             );
           }
 
-          if (!snapshot.hasData) {
-            return const ErrorMessageWidget(message: 'Data tidak ditemukan');
+          final product = snapshot.data;
+          if (product == null) {
+            return const Center(child: Text('Produk tidak ditemukan.'));
           }
 
-          final show = snapshot.data!;
-          final genres = show.genres.isEmpty ? '-' : show.genres.join(', ');
+          return ValueListenableBuilder<Box<Map<dynamic, dynamic>>>(
+            valueListenable: CartService.box.listenable(),
+            builder: (context, box, _) {
+              final inCart = box.containsKey(product.id.toString());
 
-          return SafeArea(
-            top: false,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              return Column(
                 children: [
-                  SizedBox(
-                    width: double.infinity,
-                    height: MediaQuery.of(context).size.height * 0.55,
-                    child: show.image != null
-                        ? Image.network(
-                            show.image!,
-                            fit: BoxFit.cover,
-                            alignment: Alignment.topCenter,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                color: appCard,
-                                child: const Icon(
-                                  Icons.broken_image,
-                                  color: Colors.grey,
-                                  size: 60,
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.only(bottom: 20),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 760),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                margin: const EdgeInsets.fromLTRB(
+                                  14,
+                                  12,
+                                  14,
+                                  16,
                                 ),
-                              );
-                            },
-                          )
-                        : Container(
-                            color: appCard,
-                            child: const Icon(
-                              Icons.broken_image,
-                              color: Colors.grey,
-                              size: 60,
-                            ),
-                          ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 18, 16, 28),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          show.name,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 25,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            RatingLabel(rating: show.rating, fontSize: 14),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                genres,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: appSecondaryText,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(10),
                                 ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 22),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: NontonButton(
-                                label: 'Nonton',
-                                icon: Icons.play_arrow_rounded,
-                                onPressed: () => _showWatchSnackBar(show),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            SizedBox(
-                              width: 54,
-                              height: 52,
-                              child: Material(
-                                color: appCard,
-                                borderRadius: BorderRadius.circular(16),
-                                child: InkWell(
-                                  borderRadius: BorderRadius.circular(16),
-                                  onTap: () => _toggleFavorite(show),
-                                  child: Icon(
-                                    _isFavorite
-                                        ? Icons.favorite
-                                        : Icons.favorite_border,
-                                    color: _isFavorite ? appRed : Colors.white,
+                                child: AspectRatio(
+                                  aspectRatio: 1.35,
+                                  child: Image.network(
+                                    product.image,
+                                    fit: BoxFit.contain,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return const Icon(
+                                        Icons.image_not_supported_outlined,
+                                        size: 62,
+                                        color: Color(0xFF8A9887),
+                                      );
+                                    },
                                   ),
                                 ),
                               ),
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      product.title,
+                                      style: const TextStyle(
+                                        fontSize: 22,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      _formatPrice(product.price),
+                                      style: const TextStyle(
+                                        color: Color(0xFF379A43),
+                                        fontSize: 20,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.star_rounded,
+                                          color: Color(0xFFFFB300),
+                                          size: 22,
+                                        ),
+                                        const SizedBox(width: 5),
+                                        Text(
+                                          product.rating.toStringAsFixed(1),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                        Text(
+                                          ' (${product.ratingCount} review)',
+                                          style: const TextStyle(
+                                            color: Color(0xFF6D7C6A),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 22),
+                                    const Text(
+                                      'Deskripsi',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      product.description,
+                                      style: const TextStyle(
+                                        color: Color(0xFF4F5E4C),
+                                        height: 1.55,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SafeArea(
+                    top: false,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF3FAEF),
+                        border: Border(
+                          top: BorderSide(color: Color(0xFFDCEBD8)),
+                        ),
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 760),
+                          child: SizedBox(
+                            width: double.infinity,
+                            height: 48,
+                            child: ElevatedButton(
+                              onPressed: inCart
+                                  ? null
+                                  : () => _addToCart(product),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: inCart
+                                    ? Colors.grey
+                                    : const Color(0xFF379A43),
+                                disabledBackgroundColor: Colors.grey.shade500,
+                                disabledForegroundColor: Colors.white,
+                              ),
+                              child: Text(
+                                inCart
+                                    ? 'Sudah di Keranjang'
+                                    : 'Masukkan ke Keranjang',
+                              ),
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: 28),
-                        const Text(
-                          'Overview',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        Text(
-                          _cleanHtmlTags(show.summary),
-                          style: const TextStyle(
-                            color: appSecondaryText,
-                            fontSize: 14,
-                            height: 1.6,
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                 ],
-              ),
-            ),
+              );
+            },
           );
         },
       ),

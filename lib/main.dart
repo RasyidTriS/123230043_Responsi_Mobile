@@ -1,140 +1,126 @@
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import 'package:latihan_responsi/services/auth_service.dart';
-import 'package:latihan_responsi/services/favorite_service.dart';
 import 'package:latihan_responsi/pages/login_page.dart';
 import 'package:latihan_responsi/pages/main_page.dart';
-import 'package:latihan_responsi/pages/detail_page.dart';
-import 'package:latihan_responsi/widgets/custom_widgets.dart';
+import 'package:latihan_responsi/services/cart_service.dart';
+import 'package:latihan_responsi/services/session_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize Hive
   await Hive.initFlutter();
-  await FavoriteService.initFavorites();
-
-  runApp(const MyApp());
+  await CartService.init();
+  runApp(const ShopediaApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class ShopediaApp extends StatelessWidget {
+  const ShopediaApp({super.key});
+
+  static const Color primaryGreen = Color(0xFF379A43);
+  static const Color softCream = Color(0xFFF3FAEF);
+  static const Color dangerRed = Color(0xFFF44336);
+  static const Color textDark = Color(0xFF213321);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'NontonSkuy',
+      title: 'Shopedia',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        brightness: Brightness.dark,
-        primaryColor: appRed,
-        scaffoldBackgroundColor: appBackground,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: primaryGreen,
+          primary: primaryGreen,
+          surface: Colors.white,
+          error: dangerRed,
+        ),
+        scaffoldBackgroundColor: softCream,
         appBarTheme: const AppBarTheme(
-          backgroundColor: appBackground,
+          backgroundColor: softCream,
+          foregroundColor: textDark,
+          centerTitle: true,
           elevation: 0,
-          surfaceTintColor: appBackground,
+          surfaceTintColor: softCream,
+          titleTextStyle: TextStyle(
+            color: textDark,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         bottomNavigationBarTheme: const BottomNavigationBarThemeData(
-          backgroundColor: appCard,
-          selectedItemColor: appRed,
-          unselectedItemColor: appSecondaryText,
+          backgroundColor: Colors.white,
+          selectedItemColor: primaryGreen,
+          unselectedItemColor: Color(0xFF839181),
+          selectedLabelStyle: TextStyle(fontWeight: FontWeight.w700),
+          unselectedLabelStyle: TextStyle(fontWeight: FontWeight.w600),
         ),
         cardTheme: CardThemeData(
-          color: appCard,
+          color: Colors.white,
+          elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(10),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: appBackground,
+          fillColor: Colors.white,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 14,
+          ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: appSecondaryText),
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide.none,
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: appSecondaryText),
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFD9E7D5)),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(16),
-            borderSide: const BorderSide(color: appRed, width: 1.4),
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: primaryGreen, width: 1.4),
           ),
-          hintStyle: const TextStyle(color: appSecondaryText),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: appRed,
+            backgroundColor: primaryGreen,
             foregroundColor: Colors.white,
+            elevation: 0,
+            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 18),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(10),
             ),
-            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 24),
+            textStyle: const TextStyle(fontWeight: FontWeight.w600),
           ),
         ),
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: Colors.white),
-          bodyMedium: TextStyle(color: Colors.white70),
-          displayLarge: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
+        textTheme: ThemeData.light().textTheme.apply(
+          bodyColor: textDark,
+          displayColor: textDark,
         ),
       ),
-      home: const AuthWrapper(),
+      home: const AuthGate(),
       routes: {
-        '/login': (context) => const LoginPage(),
-        '/main': (context) => const MainPage(),
-        '/detail': (context) {
-          final showId = ModalRoute.of(context)?.settings.arguments as int;
-          return DetailPage(showId: showId);
-        },
+        '/login': (_) => const LoginPage(),
+        '/main': (_) => const MainPage(),
       },
     );
   }
 }
 
-/// Widget untuk wrapper authentication
-class AuthWrapper extends StatefulWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  State<AuthWrapper> createState() => _AuthWrapperState();
-}
-
-class _AuthWrapperState extends State<AuthWrapper> {
-  late Future<bool> _isLoggedInFuture;
-
-  @override
-  void initState() {
-    super.initState();
-    _isLoggedInFuture = AuthService.isLoggedIn();
-  }
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<bool>(
-      future: _isLoggedInFuture,
+      future: SessionService.isLoggedIn(),
       builder: (context, snapshot) {
-        // Loading state
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return Scaffold(
-            backgroundColor: appBackground,
-            body: const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation<Color>(appRed),
-              ),
-            ),
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // Check login status
-        if (snapshot.hasData && snapshot.data == true) {
-          return const MainPage();
-        }
-
-        return const LoginPage();
+        return snapshot.data == true ? const MainPage() : const LoginPage();
       },
     );
   }
